@@ -1,0 +1,57 @@
+# Python __pycache__ Verzeichnisse
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtuelle Umgebungen
+.venv/
+env/
+venv/
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+
+# Konfigurations- und Umgebungsdateien
+.env
+*.env
+
+# Editor-spezifische Dateien
+.vscode/
+.idea/
+
+# System-Dateien
+.DS_Store
+Thumbs.db
+
+# Datenverzeichnisse (wichtiger Punkt)
+fma-master/data/
+fma-master/figures/
+
+# Logfiles
+*.log
+
+# Archivdateien
+*.zip
+*.tar.gz
+*.tar
+*.rar
+
+# Ergebnisse und temporäre Dateien
+*.out
+*.tmp
+*.bak
+
+# Falls du virtuelle Umgebungen innerhalb deines Repos hast
+*.egg-info/
+.eggs/
+
+# Test-/Experimentverzeichnisse
+tests/__pycache__/
+fma-master/__pycache__/
+fma_metadata/__pycache__/
+
+# Optional: bestimmte Output-Dateien aus Verarbeitung
+*.h5
+*.pkl
+*.npy
+*.csv
