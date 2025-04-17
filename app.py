@@ -1,6 +1,4 @@
-# app.py
 import os
-import random
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -22,6 +20,7 @@ per PCA auf zwei Dimensionen reduziert und anschließend mit K‑Means in Cluste
 # Start‑Button
 if "start_pressed" not in st.session_state:
     st.session_state.start_pressed = False
+
 col_filters, col_start = st.columns([3, 1])
 with col_filters:
     c1, c2, c3, c4 = st.columns(4)
@@ -36,29 +35,35 @@ with col_filters:
 with col_start:
     if st.button("Start"):
         st.session_state.start_pressed = True
+
 if not st.session_state.start_pressed:
     st.stop()
 
-# Audio‑Dateien laden und Features extrahieren
-audio_files = get_audio_files("fma-master/data/fma_medium", limit=limit)
+# 1) Audio‑Dateien nur einmal pro limit laden (gecached)
+@st.cache_data
+def load_audio_files(path: str, limit: int):
+    return get_audio_files(path, limit)
+
+audio_files = load_audio_files("fma-master/data/fma_medium", limit)
 st.write(f"Gefundene MP3‑Dateien: **{len(audio_files)}**")
 
+# 2) Features extrahieren (gecached)
 @st.cache_data
 def get_features(files, duration, offset):
     return create_feature_matrix(files, duration=duration, offset=offset)
 
 features_matrix, audio_files = get_features(audio_files, duration, offset)
-st.write(f"Verfügbare Dateien nach Filter: **{len(audio_files)}**")  
+st.write(f"Verfügbare Dateien nach Filter: **{len(audio_files)}**")
 st.write("Feature‑Matrix Shape:", features_matrix.shape)
 
 # Clustering & PCA
-clusters, _          = perform_kmeans(features_matrix, k)
-pca_result, pca_model= perform_pca(features_matrix)
-feature_names       = [f"MFCC {i+1}" for i in range(13)] + \
-                      [f"Chroma {i+1}" for i in range(12)] + \
-                      ["ZCR", "Spectral Centroid"]
-df_results          = pd.DataFrame({"file_path": audio_files, "cluster": clusters})
-cluster_ids         = sorted(df_results["cluster"].unique())
+clusters, _           = perform_kmeans(features_matrix, k)
+pca_result, pca_model = perform_pca(features_matrix)
+feature_names        = [f"MFCC {i+1}" for i in range(13)] + \
+                       [f"Chroma {i+1}" for i in range(12)] + \
+                       ["ZCR", "Spectral Centroid"]
+df_results           = pd.DataFrame({"file_path": audio_files, "cluster": clusters})
+cluster_ids          = sorted(df_results["cluster"].unique())
 
 # --- PCA‑Visualisierung ---
 st.subheader("PCA‑Visualisierung")
@@ -67,7 +72,7 @@ st.markdown("""
 - **Wie?** Die Farben kodieren die von K‑Means gefundenen Cluster.  
 - **Warum?** So sieht man auf einen Blick, welche Songs akustisch ähnlich sind.
 """)
-st.pyplot(plot_clusters(pca_result, clusters, pca_model, feature_names))
+st.pyplot(plot_clusters(pca_result, clusters, pca_model, feature_names), use_container_width=True)
 
 # --- Songs zum Abspielen ---
 st.subheader("Songs zum Abspielen")
@@ -75,7 +80,6 @@ st.markdown("Wählen Sie einen beliebigen Song pro Cluster aus (Dateiname) und s
 cols = st.columns(len(cluster_ids))
 for i, c in enumerate(cluster_ids):
     with cols[i]:
-        # alle Songs im Cluster als Optionen
         songs = df_results[df_results.cluster == c].file_path.tolist()
         choice = st.selectbox(
             f"Cluster {c}",
@@ -92,7 +96,7 @@ Dieses Balkendiagramm zeigt die **Top‑5 Audio‑Features**,
 die am stärksten zur Trennung der Cluster (PC1) beitragen.  
 Je länger der Balken, desto größer der Einfluss.
 """)
-st.pyplot(plot_feature_importance(pca_model, feature_names, top_n=5))
+st.pyplot(plot_feature_importance(pca_model, feature_names, top_n=5), use_container_width=True)
 
 # --- Cluster‑Zusammenfassung als Gradient‑Pies ---
 st.subheader("Cluster‑Zusammenfassung (Genre‑Verteilung)")
@@ -101,6 +105,7 @@ Die folgenden **Tortendiagramme** veranschaulichen für jedes Cluster,
 welche Musik‑Genres dort dominieren.  
 Größeres Segment = häufigeres Genre, Farbverlauf von Cluster‑Farbe → Grau.
 """)
+
 @st.cache_data
 def load_metadata():
     df = pd.read_csv("fma-metadata/fma_metadata/tracks.csv", header=[0,1])
@@ -108,6 +113,7 @@ def load_metadata():
         "track_id": df.index,
         "genre": df[("track","genre_top")]
     })
+
 df_tracks = load_metadata()
 
 def parse_id(path):
@@ -117,44 +123,49 @@ def parse_id(path):
         return None
 
 df_results["track_id"] = df_results["file_path"].apply(parse_id)
-summary = pd.merge(df_results, df_tracks, on="track_id", how="left") \
-               .groupby(["cluster","genre"]) \
-               .size() \
-               .reset_index(name="count")
+summary = (
+    pd.merge(df_results, df_tracks, on="track_id", how="left")
+      .groupby(["cluster","genre"])
+      .size()
+      .reset_index(name="count")
+)
 
 vir  = plt.cm.viridis
 gray = np.array([0.5,0.5,0.5,1])
 
-for i in range(0, len(cluster_ids), 3):
-    row      = cluster_ids[i:i+3]
-    pie_cols = st.columns(len(row))
-    for j, c in enumerate(row):
-        sub    = summary[summary.cluster == c].sort_values("count", ascending=False)
-        labels = sub.genre.tolist()
-        sizes  = sub["count"].tolist()
-        n      = len(sizes)
-        base   = np.array(vir(c / (len(cluster_ids) - 1)))
-        colors = [tuple(base*(1-t) + gray*t) for t in np.linspace(0,1,n)]
+# Immer 3 Spalten, fehlende als Platzhalter
+n_cols = 3
+for i in range(0, len(cluster_ids), n_cols):
+    cols = st.columns(n_cols)
+    for j, col in enumerate(cols):
+        idx = i + j
+        if idx < len(cluster_ids):
+            c = cluster_ids[idx]
+            sub    = summary[summary.cluster == c].sort_values("count", ascending=False)
+            labels = sub.genre.tolist()
+            sizes  = sub["count"].tolist()
+            base   = np.array(vir(c / (len(cluster_ids)-1)))
+            colors = [tuple(base*(1-t) + gray*t) for t in np.linspace(0,1,len(sizes))]
 
-        with pie_cols[j]:
-            fig, ax = plt.subplots(figsize=(1.5, 1.5))
-            fig.patch.set_facecolor('#121212')
-            ax.set_facecolor('#121212')
+            with col:
+                fig, ax = plt.subplots(figsize=(2,2))
+                fig.patch.set_facecolor('#121212')
+                ax.set_facecolor('#121212')
 
-            ax.pie(
-                sizes,
-                labels=labels,
-                autopct='%1.1f%%',
-                textprops={'color':'white', 'fontsize':6},
-                colors=colors
-            )
-            ax.axis('equal')
-            # Feste Plot-Position, verhindert Einziehen bei vielen Labels
-            ax.set_position([0.05, 0.05, 0.9, 0.9])
+                ax.pie(
+                    sizes,
+                    labels=labels,
+                    autopct='%1.1f%%',
+                    textprops={'color':'white', 'fontsize':6},
+                    colors=colors
+                )
+                ax.axis('equal')
+                ax.set_position([0.05, 0.05, 0.9, 0.9])
+                ax.set_title(f"Cluster {c}", color='white', fontsize=8)
+                for spine in ax.spines.values():
+                    spine.set_visible(False)
 
-            ax.set_title(f"Cluster {c}", color='white', fontsize=8)
-            # Rahmen entfernen
-            for spine in ax.spines.values():
-                spine.set_visible(False)
-
-            st.pyplot(fig)
+                st.pyplot(fig, use_container_width=True)
+        else:
+            # Leer-Spalte für gleiche Breite
+            cols[j].empty()
