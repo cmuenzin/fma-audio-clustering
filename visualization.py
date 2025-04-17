@@ -1,40 +1,47 @@
+# visualization.py
+import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 
-def plot_clusters_interactive(pca_result, clusters, pca_model, feature_names, df_results):
-    """
-    Erzeugt einen interaktiven Plotly-Scatterplot der PCA-Ergebnisse.
-    - Die X- und Y-Achse werden anhand der höchsten absoluten Loadings in PC1 und PC2 bezeichnet.
-    - Im Hover wird der file_path angezeigt.
-    """
+def plot_clusters(pca_result, clusters, pca_model, feature_names):
     comp1 = pca_model.components_[0]
     comp2 = pca_model.components_[1]
     idx1 = np.argmax(np.abs(comp1))
     idx2 = np.argmax(np.abs(comp2))
-    xlabel = f"PCA 1 ({feature_names[idx1]})"
-    ylabel = f"PCA 2 ({feature_names[idx2]})"
-    
-    df_plot = pd.DataFrame(pca_result, columns=["PC1", "PC2"])
-    df_plot["cluster"] = clusters
-    df_plot["file_path"] = df_results["file_path"].values
-    
-    fig = px.scatter(
-         df_plot, x="PC1", y="PC2", color="cluster",
-         hover_data=["file_path"],
-         labels={"PC1": xlabel, "PC2": ylabel, "cluster": "Cluster"}
+    xlabel = f"PCA 1 ({feature_names[idx1]})"
+    ylabel = f"PCA 2 ({feature_names[idx2]})"
+
+    fig, ax = plt.subplots()
+    fig.patch.set_facecolor('#121212')
+    ax.set_facecolor('#121212')
+
+    ax.scatter(
+        pca_result[:, 0], pca_result[:, 1],
+        c=clusters, cmap='viridis', alpha=0.7
     )
+    ax.set_title("PCA-Plot der Audio-Cluster", color='white')
+    ax.set_xlabel(xlabel, color='white')
+    ax.set_ylabel(ylabel, color='white')
+    ax.tick_params(colors='white')
+    fig.tight_layout()
     return fig
 
-def plot_feature_importance(pca_model, feature_names):
-    """
-    Erzeugt ein Balkendiagramm (Plotly) für die Loadings der Features in PC1.
-    """
-    pc1_loadings = pca_model.components_[0]
-    df_pc1 = pd.DataFrame({"Feature": feature_names, "Loading": pc1_loadings, "Abs": np.abs(pc1_loadings)})
-    df_pc1 = df_pc1.sort_values("Abs", ascending=False)
-    
-    fig = px.bar(df_pc1, x="Feature", y="Loading", title="Feature Importance (PC1)", text="Loading")
-    fig.update_layout(xaxis_title="Feature", yaxis_title="Loading", xaxis_tickangle=-45)
+def plot_feature_importance(pca_model, feature_names, top_n=5):
+    pc1 = np.abs(pca_model.components_[0])
+    idx = np.argsort(pc1)[::-1][:top_n]
+    features = [feature_names[i] for i in idx]
+    values   = pc1[idx]
+
+    fig, ax = plt.subplots(figsize=(4, 0.2 * top_n + 0.5))
+    fig.patch.set_facecolor('#121212')
+    ax.set_facecolor('#121212')
+
+    ax.barh(range(len(features)), values, color='teal')
+    ax.set_yticks(range(len(features)))
+    ax.set_yticklabels(features, color='white', fontsize=6)
+    ax.invert_yaxis()
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.xaxis.set_visible(False)
+    ax.set_title("Top Features (PCA Component 1)", color='white', fontsize=6)
+    fig.tight_layout()
     return fig
