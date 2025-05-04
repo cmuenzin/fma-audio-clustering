@@ -2,6 +2,10 @@ import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 
+# Anzahl der Cluster anhand der Menge der Genres festlegen
+# unique_genres = df['genre'].nunique()
+# clusters, model = perform_kmeans(features_matrix, k=unique_genres)
+
 def perform_kmeans(features_matrix, k, random_state=42):
     """
     Führe k-Means-Clustering durch und gib Labels und das Modell zurück.
