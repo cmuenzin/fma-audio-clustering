@@ -1,4 +1,3 @@
-# app.py
 import os
 import streamlit as st
 import numpy as np
@@ -23,15 +22,13 @@ if "start_pressed" not in st.session_state:
 
 col_f, col_s = st.columns([3,1])
 with col_f:
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
     with c1:
         limit    = st.number_input("Songs", min_value=10, max_value=1000, value=200, step=10)
     with c2:
         offset   = st.number_input("Offset (Sek.)", min_value=0.0, value=30.0, step=1.0)
     with c3:
         duration = st.number_input("Dauer (Sek.)", min_value=5.0, value=45.0, step=5.0)
-    with c4:
-        k        = st.slider("Cluster‑Anzahl", min_value=2, max_value=20, value=3)
 with col_s:
     if st.button("Start"):
         st.session_state.start_pressed = True
@@ -54,6 +51,33 @@ def get_features(files, duration, offset):
 features_matrix, audio_files = get_features(audio_files, duration, offset)
 st.write(f"Verfügbare Dateien nach Filter: **{len(audio_files)}**")
 st.write("Feature‑Matrix Shape:", features_matrix.shape)
+
+# --- Metadaten laden ---
+@st.cache_data
+def load_metadata():
+    metadata_path = "fma_metadata/tracks.csv"
+    if not os.path.exists(metadata_path):
+        st.warning(f"Metadaten nicht gefunden unter `{metadata_path}`. "
+                   "Bitte stelle sicher, dass die Datei vorhanden ist.")
+        return pd.DataFrame(columns=["track_id", "genre"])
+    
+    df = pd.read_csv(metadata_path, header=[0,1], low_memory=False)
+    return pd.DataFrame({
+        "track_id": df.index,
+        "genre": df[("track","genre_top")]
+    })
+
+df_tracks = load_metadata()
+n_genres = df_tracks["genre"].nunique() if not df_tracks.empty else 5
+
+# --- Cluster-Wahl: Manuell oder nach Genreanzahl ---
+st.subheader("Cluster-Einstellungen")
+cluster_mode = st.radio("Cluster-Wahl", ["Manuell", "Genres als Clusteranzahl"])
+if cluster_mode == "Manuell":
+    k = st.slider("Cluster‑Anzahl", min_value=2, max_value=20, value=3)
+else:
+    k = n_genres
+    st.markdown(f"**Cluster-Anzahl gesetzt auf Anzahl Genres: {k}**")
 
 # --- Clustering & PCA ---
 clusters, _           = perform_kmeans(features_matrix, k)
@@ -88,23 +112,11 @@ st.pyplot(plot_feature_importance(pca_model, feature_names, top_n=5),
 # --- Genre-Pies ---
 st.subheader("Cluster‑Zusammenfassung (Genre‑Verteilung)")
 
-@st.cache_data
-def load_metadata():
-    df = pd.read_csv("fma-metadata/fma_metadata/tracks.csv",
-                     header=[0,1], low_memory=False)
-    return pd.DataFrame({
-        "track_id": df.index,
-        "genre": df[("track","genre_top")]
-    })
-
-df_tracks = load_metadata()
-
 # Track-IDs parsen
 df_results["track_id"] = df_results["file_path"].apply(
     lambda p: int(os.path.splitext(os.path.basename(p))[0]) if p else None
 )
 
-# Ein Figure mit 3 Spalten-Pies pro Reihe
 fig = plot_genre_pies(df_results, df_tracks, cluster_ids,
                       cols=3, pie_size=300)
 st.plotly_chart(fig, use_container_width=True)
